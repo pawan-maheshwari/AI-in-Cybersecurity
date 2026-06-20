@@ -115,6 +115,33 @@
   .ai-foot{margin-top:10px;font-size:10.5px;color:var(--muted-2);line-height:1.5}
   .spin{width:13px;height:13px;border:2px solid rgba(255,255,255,.45);border-top-color:#fff;border-radius:50%;display:inline-block;animation:spin .7s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
+  .aikey{width:100%;font:inherit;font-size:13px;padding:9px 12px;margin-bottom:9px;border:1px solid var(--line);border-radius:9px;background:var(--bg-faint);color:var(--ink);-webkit-text-security:disc}
+  .aikey:focus{outline:2px solid var(--cardinal);outline-offset:1px;background:#fff}
+  .aikey::placeholder{color:var(--muted-2)}
+  .aikeynote{margin-top:9px;font-size:11px;color:var(--muted);line-height:1.5}
+
+  .und-toggle-wrap{text-align:center}
+  .explainer{max-height:0;overflow:hidden;transition:max-height .45s ease;margin-top:18px}
+  .explainer.open{max-height:8000px}
+  .exp-card{border:1px solid var(--line);border-radius:16px;background:#fff;box-shadow:var(--shadow);overflow:hidden}
+  .step{padding:16px 20px;border-bottom:1px solid var(--line-soft);display:grid;grid-template-columns:30px 1fr;gap:14px;align-items:start}
+  .step:last-child{border-bottom:none}
+  .step .sidx{font-family:var(--mono);font-weight:700;font-size:12px;color:#fff;background:var(--ink);width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-top:1px}
+  .step.llm .sidx{background:var(--cardinal)}
+  .stitle-row{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
+  .stitle{font-weight:700;font-size:14.5px;color:var(--ink)}
+  .sval{font-family:var(--mono);font-weight:700;font-size:16px;color:var(--cardinal);white-space:nowrap}
+  .sdesc{font-size:12.5px;color:var(--slate);margin-top:4px;line-height:1.5}
+  .exp-rows{margin-top:10px;border:1px solid var(--line-soft);border-radius:9px;overflow:hidden}
+  .er{display:flex;justify-content:space-between;gap:12px;font-size:12px;padding:6px 11px;color:var(--slate)}
+  .er:nth-child(even){background:var(--bg-faint)}
+  .er .erv{font-family:var(--mono);white-space:nowrap}
+  .er.dim,.er.dim .erv{color:var(--muted-2)}
+  .er .pen{color:var(--cardinal)} .er .neu{color:var(--green)}
+  .formula{font-family:var(--mono);font-size:12px;color:var(--ink);background:var(--bg-faint);border:1px solid var(--line-soft);border-radius:8px;padding:9px 11px;margin-top:10px;overflow-x:auto;white-space:nowrap}
+  .formula b{color:var(--cardinal)}
+  .exp-llm{font-size:13px;color:var(--slate);line-height:1.6}
+  .exp-llm b{color:var(--ink)}
 
   .btn{font:inherit;font-weight:600;font-size:13px;border-radius:9px;padding:9px 16px;border:1px solid var(--cardinal);background:var(--cardinal);color:#fff;cursor:pointer;transition:.16s;white-space:nowrap;-webkit-tap-highlight-color:transparent}
   .btn:hover{background:var(--cardinal-d);border-color:var(--cardinal-d)}
@@ -355,7 +382,9 @@
         <div class="mult"><div class="mh">Why this score</div><div id="multList"></div></div>
         <div class="aibox">
           <div class="group-h"><span class="gt">AI cross-check</span><span class="gk">claude · on demand</span></div>
+          <input type="password" id="aiKey" class="aikey" placeholder="Anthropic API key (sk-ant-…) — required on public sites" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
           <button type="button" class="btn" id="aiBtn">Pressure-test this ROI with Claude</button>
+          <div class="aikeynote">Your key is used for this one request only, held in memory, then wiped from the field. It is never saved, logged, or stored in this browser — and it goes straight to Anthropic, nowhere else.</div>
           <div class="aiout" id="aiOut"></div>
         </div>
       </div>
@@ -363,10 +392,22 @@
   </div>
 </section>
 
+<section id="understand" class="band">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="num">03 — Understand</span>
+      <h2>How this ROI is built</h2>
+      <p>A plain-language walkthrough of the exact maths behind your current score — it re-derives every time you change an option above. It also shows, honestly, where the LLM does and doesn't come in.</p>
+    </div>
+    <div class="und-toggle-wrap"><button type="button" class="btn ghost" id="undToggle">Open the explainer</button></div>
+    <div class="explainer" id="understandPanel"><div class="exp-card" id="understandBody"></div></div>
+  </div>
+</section>
+
 <section id="recs">
   <div class="wrap">
     <div class="sec-head">
-      <span class="num">03 — Improve</span>
+      <span class="num">04 — Improve</span>
       <h2>What to select to raise your ROI</h2>
       <p>Each card names a concrete change, projects your new ROI, and applies in one click. Start with the highest-impact move at the top.</p>
     </div>
@@ -393,6 +434,13 @@
 <script>
 (function(){
   "use strict";
+
+  // ── AI cross-check endpoint ────────────────────────────────────────────────
+  // Inside Claude this default works as-is. For PUBLIC hosting (GitHub Pages),
+  // deploy the Cloudflare Worker and paste its URL here, e.g.
+  //   "https://playbook-ai-proxy.YOUR-SUBDOMAIN.workers.dev"
+  var AI_ENDPOINT = "https://api.anthropic.com/v1/messages";
+
   var state={ approach:"hybrid", agents:new Set(["triage","investigation","response"]),
     autonomy:"propose", integrations:new Set(["sentinel-mcp","defender-apis"]),
     guardrails:new Set(["injection","hitl","least-priv","audit"]), scale:"ent" };
@@ -440,37 +488,56 @@
     document.querySelectorAll('.chip[data-comp]').forEach(function(ch){ch.classList.toggle('active',!!a[ch.dataset.comp]);});
   }
 
+  var AGENT_LABEL={triage:"Triage",investigation:"Investigation","threat-intel":"Threat intel",response:"Response",supervisor:"Supervisor"};
+  var AGENT_ORDER=["triage","investigation","threat-intel","response","supervisor"];
+  var AUTON_LABEL={assist:"Assist only",propose:"Propose + HITL",autolow:"Auto (low-impact)",fullauto:"Full auto"};
+  var SCALE_LABEL={smb:"SMB",mid:"Mid-market",ent:"Enterprise"};
+  var APPROACH_LABEL={prebuilt:"Prebuilt",hybrid:"Hybrid",custom:"Custom"};
+
   function compute(cfg){
     var s=cfg||state,notes=[];
     var hasRead=s.integrations.has('sentinel-mcp')||s.integrations.has('graph-security')||s.integrations.has('defender-apis');
     var canAct=s.integrations.has('defender-apis')||s.integrations.has('logic-apps');
-    var raw=0,n=s.agents.size;
-    s.agents.forEach(function(ag){var v=AGENT_VALUE[ag]||0;
-      if((ag==='triage'||ag==='investigation'||ag==='threat-intel')&&!hasRead) v*=0.4;
-      if(ag==='response'&&!canAct) v*=0.35;
-      if(ag==='supervisor'&&n<3) v*=0.4; raw+=v;});
-    var valuePotential=Math.min(100,raw*SCALE_MULT[s.scale]);
-    var cap=AUTON_CAP[s.autonomy],risk=1.0,g=s.guardrails;
-    if(!g.has('injection')){risk*=0.80;notes.push(['Missing injection sanitization','×0.80','bad']);}
-    if(!g.has('hitl')){
-      if(s.autonomy==='fullauto'){risk*=0.60;notes.push(['Full auto with no HITL gate','×0.60','bad']);}
-      else if(s.autonomy==='autolow'){risk*=0.85;notes.push(['Auto actions without HITL gate','×0.85','warn']);}
-      else notes.push(['HITL gate not set (low autonomy)','—','warn']);
+    var raw=0,n=s.agents.size,agentRows=[];
+    AGENT_ORDER.forEach(function(ag){
+      if(!s.agents.has(ag)) return;
+      var base=AGENT_VALUE[ag], v=base, note="";
+      if((ag==='triage'||ag==='investigation'||ag==='threat-intel')&&!hasRead){v=base*0.4;note="no data access ×0.4";}
+      if(ag==='response'&&!canAct){v=base*0.35;note="no execution path ×0.35";}
+      if(ag==='supervisor'&&n<3){v=base*0.4;note="too few agents ×0.4";}
+      raw+=v; agentRows.push({label:AGENT_LABEL[ag],base:base,val:Math.round(v*10)/10,note:note});
+    });
+    var scaleMult=SCALE_MULT[s.scale];
+    var valuePotential=Math.min(100,raw*scaleMult);
+    var cap=AUTON_CAP[s.autonomy],risk=1.0,g=s.guardrails,guardRows=[];
+    function gr(label,on,factor,detail){guardRows.push({label:label,on:on,factor:factor,detail:detail||""});}
+    if(g.has('injection')){gr('Injection sanitization',true,1.0);} else {risk*=0.80;notes.push(['Missing injection sanitization','×0.80','bad']);gr('Injection sanitization',false,0.80,'telemetry is attacker-authored');}
+    if(g.has('hitl')){gr('HITL approval gate',true,1.0);} else {
+      if(s.autonomy==='fullauto'){risk*=0.60;notes.push(['Full auto with no HITL gate','×0.60','bad']);gr('HITL approval gate',false,0.60,'full auto, no gate');}
+      else if(s.autonomy==='autolow'){risk*=0.85;notes.push(['Auto actions without HITL gate','×0.85','warn']);gr('HITL approval gate',false,0.85,'auto actions, no gate');}
+      else {notes.push(['HITL gate not set (low autonomy)','—','warn']);gr('HITL approval gate',false,1.0,'low autonomy — no penalty');}
     }
-    if(!g.has('least-priv')){risk*=0.90;notes.push(['No least-privilege identities','×0.90','warn']);}
-    if(!g.has('audit')){risk*=0.92;notes.push(['No immutable audit trail','×0.92','warn']);}
-    if(!g.has('purview')&&s.scale==='ent'){risk*=0.95;notes.push(['No Purview at enterprise scale','×0.95','warn']);}
+    if(g.has('least-priv')){gr('Least-privilege identities',true,1.0);} else {risk*=0.90;notes.push(['No least-privilege identities','×0.90','warn']);gr('Least-privilege identities',false,0.90);}
+    if(g.has('audit')){gr('Immutable audit',true,1.0);} else {risk*=0.92;notes.push(['No immutable audit trail','×0.92','warn']);gr('Immutable audit',false,0.92);}
+    if(s.scale==='ent'){ if(g.has('purview')){gr('Purview governance',true,1.0,'enterprise');} else {risk*=0.95;notes.push(['No Purview at enterprise scale','×0.95','warn']);gr('Purview governance',false,0.95,'enterprise PII/residency');} }
     risk=Math.max(0.4,risk);
     if(g.size>=4&&risk>0.97) notes.push(['Guardrail coverage strong','×'+risk.toFixed(2),'ok']);
     var realized=valuePotential*risk*cap;
-    var cost=({prebuilt:18,hybrid:38,custom:70})[s.approach];
-    if(s.approach!=='prebuilt') cost+=n*(s.approach==='custom'?6:3.5);
-    cost+=s.integrations.size*3; cost+=g.size*2;
-    cost+=({assist:0,propose:3,autolow:6,fullauto:9})[s.autonomy];
-    cost+=({smb:0,mid:4,ent:8})[s.scale]; cost=Math.min(100,cost);
+    var costRows=[], cost=({prebuilt:18,hybrid:38,custom:70})[s.approach];
+    costRows.push({label:'Build approach ('+APPROACH_LABEL[s.approach]+')',amt:({prebuilt:18,hybrid:38,custom:70})[s.approach]});
+    if(s.approach!=='prebuilt'){var pa=n*(s.approach==='custom'?6:3.5);cost+=pa;costRows.push({label:'Per-agent build ('+n+' agents)',amt:pa});}
+    var ic=s.integrations.size*3; cost+=ic; if(ic)costRows.push({label:'Integrations ('+s.integrations.size+')',amt:ic});
+    var gc=g.size*2; cost+=gc; if(gc)costRows.push({label:'Guardrails ('+g.size+')',amt:gc});
+    var ac=({assist:0,propose:3,autolow:6,fullauto:9})[s.autonomy]; cost+=ac; if(ac)costRows.push({label:'Autonomy ops ('+AUTON_LABEL[s.autonomy]+')',amt:ac});
+    var sc=({smb:0,mid:4,ent:8})[s.scale]; cost+=sc; if(sc)costRows.push({label:'Scale overhead ('+SCALE_LABEL[s.scale]+')',amt:sc});
+    var costUncapped=cost; cost=Math.min(100,cost);
     var index=Math.max(0,Math.min(100,Math.round(realized-cost*0.55+14)));
     return {valuePotential:Math.round(valuePotential),realized:Math.round(realized),cost:Math.round(cost),
-            index:index,risk:risk,cap:cap,notes:notes,hasRead:hasRead,canAct:canAct,n:n};
+            index:index,risk:risk,cap:cap,notes:notes,hasRead:hasRead,canAct:canAct,n:n,
+            trace:{agentRows:agentRows,rawValue:Math.round(raw*10)/10,scaleMult:scaleMult,scaleLabel:SCALE_LABEL[s.scale],
+              valuePotential:Math.round(valuePotential),cap:cap,capLabel:AUTON_LABEL[s.autonomy],
+              guardRows:guardRows,risk:risk,realized:Math.round(realized),
+              costRows:costRows,costUncapped:Math.round(costUncapped*10)/10,cost:Math.round(cost),index:index}};
   }
 
   function grade(i){
@@ -602,14 +669,92 @@
     syncAll();          // checkboxes/radios reflect state
     highlightDiagram(); // diagram reflects state
     renderGauge(m);     // ROI reflects state
+    renderUnderstand(m);// live explainer reflects state
     try{ renderAdvice(m); }       // advice is best-effort, isolated
     catch(err){ var bar=document.getElementById('optBar'); if(bar) bar.innerHTML=''; }
   }
 
   /* ---- AI cross-check: live Claude reasoning over the model output (on demand) ---- */
+  /* ---- UNDERSTAND: live, plain-language derivation of the current score ---- */
+  var undOpen=false;
+  var undToggle=document.getElementById('undToggle');
+  var undPanel=document.getElementById('understandPanel');
+  if(undToggle) undToggle.addEventListener('click',function(){
+    undOpen=!undOpen;
+    if(undPanel) undPanel.classList.toggle('open',undOpen);
+    undToggle.textContent=undOpen?'Hide the explainer':'Open the explainer';
+  });
+  function rows(list){return '<div class="exp-rows">'+list.join('')+'</div>';}
+  function renderUnderstand(m){
+    var body=document.getElementById('understandBody'); if(!body) return;
+    var t=m.trace;
+    // step 1 — value potential
+    var ar = t.agentRows.length
+      ? t.agentRows.map(function(a){
+          return '<div class="er'+(a.note?' dim':'')+'"><span>'+a.label+(a.note?' <span class="pen">('+a.note+')</span>':'')+'</span><span class="erv">'+a.val+(a.note?' / '+a.base:'')+'</span></div>';
+        }).join('')
+      : '<div class="er dim"><span>No agents selected</span><span class="erv">0</span></div>';
+    var step1='<div class="step"><div class="sidx">1</div><div class="sbody">'+
+      '<div class="stitle-row"><span class="stitle">Value potential</span><span class="sval">'+t.valuePotential+'</span></div>'+
+      '<div class="sdesc">Each selected agent contributes impact points. An agent with no way to see data or take action is marked down. The subtotal is scaled by environment size.</div>'+
+      rows([ar])+
+      '<div class="formula">('+t.rawValue+' agent pts) × '+t.scaleMult+' ('+t.scaleLabel+') = <b>'+t.valuePotential+'</b></div>'+
+      '</div></div>';
+    // step 2 — autonomy capture
+    var step2='<div class="step"><div class="sidx">2</div><div class="sbody">'+
+      '<div class="stitle-row"><span class="stitle">Autonomy capture</span><span class="sval">×'+t.cap.toFixed(2)+'</span></div>'+
+      '<div class="sdesc">How much of that value you actually realise. <b>'+t.capLabel+'</b> captures '+Math.round(t.cap*100)+'% — more autonomy means more analyst hours saved, but it only pays off if guardrails keep it safe (next step).</div>'+
+      '</div></div>';
+    // step 3 — risk adjustment
+    var gr=t.guardRows.map(function(r){
+      var cls=r.on?'neu':(r.factor<1?'pen':'dim');
+      var val=r.on?'×1.00 ✓':(r.factor<1?'×'+r.factor.toFixed(2):'—');
+      return '<div class="er"><span>'+(r.on?'':'<b>Missing:</b> ')+r.label+(r.detail?' <span class="erv dim">— '+r.detail+'</span>':'')+'</span><span class="erv '+cls+'">'+val+'</span></div>';
+    }).join('');
+    var step3='<div class="step"><div class="sidx">3</div><div class="sbody">'+
+      '<div class="stitle-row"><span class="stitle">Risk adjustment</span><span class="sval">×'+t.risk.toFixed(2)+'</span></div>'+
+      '<div class="sdesc">Weak guardrails discount the value above them, because incidents, outages and prompt-injection erode it. Each missing control multiplies the value down; present controls leave it intact.</div>'+
+      rows([gr])+
+      '</div></div>';
+    // step 4 — realized
+    var step4='<div class="step"><div class="sidx">4</div><div class="sbody">'+
+      '<div class="stitle-row"><span class="stitle">Risk-adjusted value</span><span class="sval">'+t.realized+'</span></div>'+
+      '<div class="formula">'+t.valuePotential+' × '+t.cap.toFixed(2)+' (capture) × '+t.risk.toFixed(2)+' (risk) = <b>'+t.realized+'</b></div>'+
+      '</div></div>';
+    // step 5 — cost
+    var cr=t.costRows.map(function(c){return '<div class="er"><span>'+c.label+'</span><span class="erv">+'+c.amt+'</span></div>';}).join('');
+    var step5='<div class="step"><div class="sidx">5</div><div class="sbody">'+
+      '<div class="stitle-row"><span class="stitle">Cost &amp; effort</span><span class="sval">'+t.cost+'</span></div>'+
+      '<div class="sdesc">Build and run effort. Custom builds and higher autonomy cost more; prebuilt and small scale cost less.'+(t.costUncapped>100?' (Raw '+t.costUncapped+', capped at 100.)':'')+'</div>'+
+      rows([cr])+
+      '</div></div>';
+    // step 6 — index
+    var step6='<div class="step"><div class="sidx">6</div><div class="sbody">'+
+      '<div class="stitle-row"><span class="stitle">ROI index</span><span class="sval">'+t.index+'</span></div>'+
+      '<div class="sdesc">Realised value minus a weighted share of cost, normalised to a readable 0–100 band. This is the number on the gauge.</div>'+
+      '<div class="formula">'+t.realized+' − ('+t.cost+' × 0.55) + 14 → clamp 0–100 = <b>'+t.index+'</b></div>'+
+      '</div></div>';
+    // step 7 — where the LLM comes in
+    var step7='<div class="step llm"><div class="sidx">AI</div><div class="sbody">'+
+      '<div class="stitle-row"><span class="stitle">Where the LLM comes in</span></div>'+
+      '<div class="exp-llm"><b>The number above is deterministic</b> — these six steps run instantly in your browser with no AI, so the score is transparent, reproducible and free. '+
+      'The LLM is a separate <b>cross-check</b>: when you tap “Pressure-test this ROI with Claude”, this exact breakdown and your configuration are sent to Claude, which returns a confidence rating, what’s really driving the value, the risks to weigh, and — candidly — what a formula like this can’t capture (your real alert volumes, analyst costs, integration maturity, organisational readiness). '+
+      '<b>Claude interprets the score; it does not calculate it.</b> That separation is deliberate: you get a fast, auditable number and an independent expert read on top.</div>'+
+      '</div></div>';
+    body.innerHTML=step1+step2+step3+step4+step5+step6+step7;
+  }
+
   function esc(s){return String(s==null?'':s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
-  var aiBtn=document.getElementById('aiBtn'), aiOut=document.getElementById('aiOut');
+  var aiBtn=document.getElementById('aiBtn'), aiOut=document.getElementById('aiOut'), aiKey=document.getElementById('aiKey');
   if(aiBtn) aiBtn.addEventListener('click',function(){
+    var key=aiKey?(aiKey.value||"").trim():"";
+    var url, headers={"Content-Type":"application/json"};
+    if(key){ url="https://api.anthropic.com/v1/messages";
+      headers["x-api-key"]=key;
+      headers["anthropic-version"]="2023-06-01";
+      headers["anthropic-dangerous-direct-browser-access"]="true";
+    } else { url=AI_ENDPOINT; }
+    function wipeKey(){ key=null; if(aiKey) aiKey.value=""; } // never persisted anywhere
     var m=compute(state);
     var cfg={ approach:state.approach, autonomy:state.autonomy, scale:state.scale,
       agents:Array.from(state.agents), integrations:Array.from(state.integrations), guardrails:Array.from(state.guardrails) };
@@ -628,8 +773,8 @@
       "drivers (array of exactly 3 short strings), risks (array of 2-3 short strings), "+
       "blindspot (one sentence on what this numeric model misses).\n\n"+
       "CONFIGURATION:\n"+JSON.stringify(cfg)+"\n\nMODEL OUTPUT:\n"+JSON.stringify(modelOut);
-    fetch("https://api.anthropic.com/v1/messages",{
-      method:"POST", headers:{"Content-Type":"application/json"},
+    fetch(url,{
+      method:"POST", headers:headers,
       body:JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:1000, messages:[{role:"user",content:prompt}] })
     })
     .then(function(r){return r.json();})
@@ -648,9 +793,9 @@
         '<div class="ai-foot">Live AI commentary on the model\u2019s output for the current selection \u2014 it interprets the figures above, it doesn\u2019t replace them or your own due diligence.</div>';
     })
     .catch(function(){
-      aiOut.innerHTML='<div class="ai-err">Couldn\u2019t reach the AI analyst just now (this needs to run inside Claude). The numeric ROI above still stands \u2014 try again in a moment.</div>';
+      aiOut.innerHTML='<div class="ai-err">Couldn\u2019t complete the cross-check. On a public site, paste your Anthropic API key in the field above and try again. Inside Claude, no key is needed. Either way, the numeric ROI above still stands.</div>';
     })
-    .then(function(){ aiBtn.disabled=false; aiBtn.textContent=orig; });
+    .then(function(){ aiBtn.disabled=false; aiBtn.textContent=orig; wipeKey(); });
   });
 
   update();
